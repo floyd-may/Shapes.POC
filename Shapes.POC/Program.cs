@@ -30,7 +30,7 @@ namespace Shapes.POC
 
         private static ClassDeclarationSyntax CreateClass(Shape shape, ImmutableArray<Feature> enabledFeatures)
         {
-            var featureSuffix = string.Join("_", enabledFeatures.Select(x => x.Name));
+            var featureSuffix = string.Join("_", enabledFeatures.Select(x => x.Name).OrderBy(x => x));
 
             var className = $"{shape.Name}_{featureSuffix}".TrimEnd('_');
 
@@ -50,6 +50,25 @@ namespace Shapes.POC
                     MethodDeclaration(PredefinedType(Token(SyntaxKind.VoidKeyword)), Identifier("Draw"))
                         .AddModifiers(Token(SyntaxKind.PublicKeyword))
                         .WithBody(Block()));
+            }
+
+            foreach (var otherFeature in shape.Features.Where(f => !enabledFeatures.Any(ef => ef.Name == f.Name)))
+            {
+                var featureSet = enabledFeatures.Select(x => x.Name).ToImmutableArray().Add(otherFeature.Name).ToImmutableSortedSet();
+                if (shape.ValidFeatureCombinations.Any(comb => featureSet.IsSubsetOf(comb.Select(x => x.Name))))
+                {
+                    var otherClassName = featureSet.ToFluentClassName(shape);
+                    klass = klass.AddMembers(
+                        MethodDeclaration(IdentifierName(otherClassName), Identifier(otherFeature.Name))
+                            .AddModifiers(Token(SyntaxKind.PublicKeyword))
+                            .AddParameterListParameters(
+                                otherFeature.Parameters.Select(kvp => Parameter(Identifier(kvp.Key)).WithType(IdentifierName(kvp.Value.FullName))).ToArray()
+                                )
+                            .WithBody(Block(SingletonList<StatementSyntax>(
+                                ReturnStatement(
+                                    ObjectCreationExpression(IdentifierName(otherClassName))
+                                        .WithArgumentList(ArgumentList()))))));
+                }
             }
             return klass;
         }
@@ -83,5 +102,16 @@ namespace Shapes.POC
         public static void Draw(uint strokeColor) { }
         public static void Draw(uint strokeColor, uint fillColor) { }
         public static void Draw(uint strokeColor, uint fillColor, float cornerRadius) { }
+    }
+
+    public static class EnumerableExtensions
+    {
+        public static string ToFluentClassName(this IEnumerable<string> featureNames, Shape shape)
+        {
+            var featureSuffix = string.Join("_", featureNames.OrderBy(x => x));
+            var className = $"{shape.Name}_{featureSuffix}".TrimEnd('_');
+
+            return className;
+        }
     }
 }
